@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Cosmic Navigator: Targeted Navigation</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        
+        #ui { 
+            position: absolute; 
+            top: 25px; 
+            left: 25px; 
+            color: white; 
+            z-index: 10; 
+            pointer-events: none; 
+        }
+
+        h1 { margin: 0; font-size: 20px; letter-spacing: 4px; font-weight: 200; text-transform: uppercase; }
+        .label { font-size: 10px; opacity: 0.5; letter-spacing: 2px; margin-top: 5px; text-transform: uppercase; }
+        
+        #location { margin-top: 15px; font-size: 13px; color: #00d2ff; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+
+        .btn-group { margin-top: 20px; pointer-events: auto; display: flex; flex-direction: column; gap: 8px; }
+        
+        button {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 10px 15px;
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-radius: 4px;
+            width: 180px;
+            text-align: left;
+        }
+
+        button:hover {
+            background: rgba(0, 210, 255, 0.2);
+            border-color: #00d2ff;
+        }
+
+        #nav-hint { 
+            position: absolute; 
+            bottom: 20px; 
+            width: 100%; 
+            text-align: center; 
+            color: rgba(255,255,255,0.3); 
+            font-size: 9px; 
+            letter-spacing: 2px; 
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>COSMIC NAVIGATOR</h1>
+        <p class="label">Universal Scale Simulation</p>
+        <div id="location">Deep Space</div>
+        
+        <div class="btn-group">
+            <button onclick="jumpTo('milkyway')">● Milky Way Galaxy</button>
+            <button onclick="jumpTo('andromeda')">● Andromeda Galaxy</button>
+            <button onclick="jumpTo('earth')">● Planet Earth</button>
+        </div>
+    </div>
+
+    <div id="nav-hint">Drag: Rotate | 2-Finger: Pan | Pinch: Zoom</div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
+    <script>
+        // --- 1. Procedural Glow (No Squares) ---
+        function createGlowTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.3)');
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 64, 64);
+            return new THREE.CanvasTexture(canvas);
+        }
+        const starSprite = createGlowTexture();
+
+        // --- 2. Setup Scene ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 20000000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.screenSpacePanning = true;
+        camera.position.set(2000, 1000, 2000);
+
+        // --- 3. Cosmic Objects Positions ---
+        const COORDS = {
+            milkyWay: new THREE.Vector3(0, 0, 0),
+            andromeda: new THREE.Vector3(4000, 300, -3000),
+            earth: new THREE.Vector3(180, 0, 80) // Tucked in Orion Arm
+        };
+
+        // --- 4. Starfield & Galaxies ---
+        function createGalaxy(radius, count, color, spin, center) {
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(count * 3);
+            for(let i=0; i<count; i++) {
+                const r = Math.random() * radius;
+                const angle = r * spin + (i % 4) * (Math.PI / 2);
+                pos[i*3] = Math.cos(angle) * r + (Math.random()-0.5)*r*0.1 + center.x;
+                pos[i*3+1] = (Math.random()-0.5) * (radius * 0.05) * (1 - r/radius) + center.y;
+                pos[i*3+2] = Math.sin(angle) * r + (Math.random()-0.5)*r*0.1 + center.z;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            return new THREE.Points(geo, new THREE.PointsMaterial({ 
+                color: color, size: 2, map: starSprite, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false 
+            }));
+        }
+
+        const mw = createGalaxy(350, 40000, 0x66aaff, 0.8, COORDS.milkyWay);
+        const and = createGalaxy(500, 30000, 0xffaa88, 0.4, COORDS.andromeda);
+        and.rotation.x = Math.PI / 6;
+        scene.add(mw, and);
+
+        // Background Starfield (Anti-Void)
+        const bgGeo = new THREE.BufferGeometry();
+        const bgPos = new Float32Array(15000 * 3);
+        for(let i=0; i<45000; i++) bgPos[i] = (Math.random()-0.5) * 50000;
+        bgGeo.setAttribute('position', new THREE.BufferAttribute(bgPos, 3));
+        scene.add(new THREE.Points(bgGeo, new THREE.PointsMaterial({ size: 12, map: starSprite, transparent: true, opacity: 0.3 })));
+
+        // --- 5. Solar System (Accurate Scaling) ---
+        const solarGroup = new THREE.Group();
+        solarGroup.position.copy(COORDS.earth);
+        scene.add(solarGroup);
+
+        const sun = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), new THREE.MeshBasicMaterial({ color: 0xffcc33 }));
+        solarGroup.add(sun);
+        const light = new THREE.PointLight(0xffffff, 2, 1000);
+        solarGroup.add(light);
+
+        const earthGroup = new THREE.Group();
+        earthGroup.position.x = 20; 
+        solarGroup.add(earthGroup);
+
+        const earth = new THREE.Mesh(new THREE.SphereGeometry(0.4, 64, 64), new THREE.MeshStandardMaterial({ color: 0x2255ff }));
+        const moon = new THREE.Mesh(new THREE.SphereGeometry(0.1, 32, 32), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+        moon.position.x = 1.5;
+        earthGroup.add(earth, moon);
+
+        // --- 6. Navigation Logic (Hyper-jumps) ---
+        function jumpTo(targetKey) {
+            const targetPos = COORDS[targetKey];
+            const camOffset = targetKey === 'earth' ? 15 : targetKey === 'andromeda' ? 800 : 1000;
+
+            // Animate Control Target (Where we look)
+            new TWEEN.Tween(controls.target)
+                .to({ x: targetPos.x, y: targetPos.y, z: targetPos.z }, 2000)
+                .easing(TWEEN.Easing.Quadratic.InOut)
+                .start();
+
+            // Animate Camera Position
+            new TWEEN.Tween(camera.position)
+                .to({ x: targetPos.x, y: targetPos.y + (camOffset/2), z: targetPos.z + camOffset }, 2000)
+                .easing(TWEEN.Easing.Quadratic.InOut)
+                .start();
+        }
+
+        // --- 7. Main Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            TWEEN.update();
+            controls.update();
+
+            // Dynamic Scaling Engine (Expansion for visibility)
+            const distToSun = camera.position.distanceTo(COORDS.earth);
+            let scale = 1;
+            if (distToSun < 150) {
+                scale = THREE.MathUtils.mapLinear(distToSun, 150, 0, 1, 20);
+                solarGroup.scale.setScalar(scale);
+            } else {
+                solarGroup.scale.setScalar(1);
+            }
+
+            // Update UI
+            const locUI = document.getElementById('location');
+            if (distToSun > 2000) locUI.innerText = "Local Group (Andromeda System)";
+            else if (distToSun > 400) locUI.innerText = "Milky Way Galaxy";
+            else if (distToSun > 50) locUI.innerText = "Sol Solar System";
+            else locUI.innerText = "Terra System (Earth)";
+
+            // Rotations
+            mw.rotation.y += 0.0001;
+            and.rotation.y -= 0.00005;
+            earthGroup.rotation.y += 0.005;
+            moon.position.x = Math.cos(Date.now() * 0.001) * 1.5;
+            moon.position.z = Math.sin(Date.now() * 0.001) * 1.5;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

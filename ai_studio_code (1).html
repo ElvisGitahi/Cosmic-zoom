@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Accurate Scale Cosmic Navigator</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; touch-action: none; }
+        #ui { position: absolute; top: 25px; left: 25px; color: white; z-index: 10; pointer-events: none; }
+        h1 { margin: 0; font-size: 20px; letter-spacing: 4px; font-weight: 200; text-transform: uppercase; }
+        .label { font-size: 10px; opacity: 0.5; letter-spacing: 2px; margin-top: 5px; }
+        #location { margin-top: 15px; font-size: 13px; color: #00d2ff; text-transform: uppercase; letter-spacing: 1px; }
+        #nav-hint { position: absolute; bottom: 20px; width: 100%; text-align: center; color: rgba(255,255,255,0.3); font-size: 9px; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>COSMIC NAVIGATOR</h1>
+        <p class="label">Pinch to Zoom | Drag to Orbit | 2-Finger Pan</p>
+        <div id="location">Local Group</div>
+    </div>
+
+    <div id="nav-hint">Accurate Scale Simulation: Exploring the Orion Arm</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        /** 
+         * 1. THE TEXTURE FIX (No Squares)
+         * Creates a soft radial glow for stars
+         */
+        function createStarTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            grad.addColorStop(0.2, 'rgba(255, 255, 255, 0.5)');
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 64, 64);
+            return new THREE.CanvasTexture(canvas);
+        }
+        const starTexture = createStarTexture();
+
+        // 2. SCENE SETUP
+        const scene = new THREE.Scene();
+        // Logarithmic depth buffer is REQUIRED for massive scale differences
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.001, 10000000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const universeGroup = new THREE.Group();
+        const solarSystemGroup = new THREE.Group();
+        scene.add(universeGroup, solarSystemGroup);
+
+        // 3. FULL 3D CONTROLS
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.screenSpacePanning = true; 
+        camera.position.set(0, 400, 800);
+
+        /**
+         * 4. GALAXY GENERATION (Accurate Proportions)
+         * Milky Way is ~100k Light Years. Andromeda is ~220k.
+         */
+        function makeGalaxy(radius, stars, color, spin, xOffset, zOffset) {
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(stars * 3);
+            for(let i=0; i<stars; i++) {
+                const r = Math.random() * radius;
+                const angle = r * spin + (i % 4) * (Math.PI / 2); // 4 arms
+                const thickness = (1 - r/radius) * (radius * 0.05);
+                pos[i*3] = Math.cos(angle) * r + (Math.random()-0.5)*r*0.1 + xOffset;
+                pos[i*3+1] = (Math.random()-0.5) * thickness;
+                pos[i*3+2] = Math.sin(angle) * r + (Math.random()-0.5)*r*0.1 + zOffset;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            return new THREE.Points(geo, new THREE.PointsMaterial({
+                color: color, size: 1.5, map: starTexture, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            }));
+        }
+
+        const milkyWay = makeGalaxy(300, 40000, 0x5588ff, 0.8, 0, 0);
+        const andromeda = makeGalaxy(450, 30000, 0xffaa77, 0.4, 2000, -1000);
+        universeGroup.add(milkyWay, andromeda);
+
+        // Global Background Starfield (The "Anti-Void")
+        const bgGeo = new THREE.BufferGeometry();
+        const bgPos = new Float32Array(10000 * 3);
+        for(let i=0; i<30000; i++) bgPos[i] = (Math.random()-0.5) * 20000;
+        bgGeo.setAttribute('position', new THREE.BufferAttribute(bgPos, 3));
+        scene.add(new THREE.Points(bgGeo, new THREE.PointsMaterial({ size: 10, map: starTexture, transparent: true, opacity: 0.4 })));
+
+        /**
+         * 5. SOLAR SYSTEM (Scaling Fix)
+         * Placed accurately in the Orion Arm (~2/3 out from center)
+         */
+        solarSystemGroup.position.set(180, 0, 80); 
+        
+        // The Sun
+        const sun = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), new THREE.MeshBasicMaterial({ color: 0xffcc33 }));
+        solarSystemGroup.add(sun);
+        const sunLight = new THREE.PointLight(0xffffff, 2, 1000);
+        solarSystemGroup.add(sunLight);
+
+        // Planet Ratios (Distances simplified but relative)
+        const planets = [
+            { name: "Earth", color: 0x2244ff, dist: 15, size: 0.35 },
+            { name: "Mars", color: 0xff4400, dist: 22, size: 0.25 },
+            { name: "Jupiter", color: 0xd3a980, dist: 45, size: 0.9 },
+            { name: "Saturn", color: 0xe6dbad, dist: 65, size: 0.8, rings: true }
+        ];
+
+        const planetMeshes = [];
+        planets.forEach(p => {
+            const group = new THREE.Group();
+            const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.size, 64, 64), new THREE.MeshStandardMaterial({ color: p.color }));
+            mesh.position.x = p.dist;
+            group.add(mesh);
+            solarSystemGroup.add(group);
+            planetMeshes.push({ group, data: p });
+
+            if(p.rings) {
+                const r = new THREE.Mesh(new THREE.RingGeometry(p.size+0.5, p.size+2, 64), new THREE.MeshBasicMaterial({ color: p.color, side: THREE.DoubleSide, transparent: true, opacity: 0.3 }));
+                r.rotation.x = Math.PI/2;
+                mesh.add(r);
+            }
+        });
+
+        scene.add(new THREE.AmbientLight(0x111111));
+
+        // 6. ANIMATION & DYNAMIC SCALING LOGIC
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Rotations
+            milkyWay.rotation.y += 0.0001;
+            andromeda.rotation.y -= 0.00005;
+
+            // Accurate Scale Handling:
+            // We calculate how far the camera is from the Sun.
+            const distToSun = camera.position.distanceTo(solarSystemGroup.position);
+
+            /**
+             * DYNAMIC SCALE ENGINE
+             * When far away, the solar system is tiny. 
+             * As you zoom in, it "expands" so you can see the planets.
+             */
+            let scaleFactor = 1;
+            if (distToSun > 100) {
+                // Far away: System is just a point star
+                scaleFactor = 1; 
+                solarSystemGroup.scale.setScalar(1);
+            } else {
+                // Zooming in: Expand the system for visibility
+                scaleFactor = THREE.MathUtils.mapLinear(distToSun, 100, 0, 1, 15);
+                solarSystemGroup.scale.setScalar(scaleFactor);
+            }
+
+            // UI Update
+            const locUI = document.getElementById('location');
+            if (distToSun > 1500) locUI.innerText = "Local Group (Andromeda Visible)";
+            else if (distToSun > 400) locUI.innerText = "Milky Way Galaxy";
+            else if (distToSun > 80) locUI.innerText = "Solar System (Entering)";
+            else locUI.innerText = "Terra System (Earth/Moon)";
+
+            // Planets Orbiting
+            planetMeshes.forEach((p, idx) => {
+                p.group.rotation.y += 0.01 / (idx + 1);
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
