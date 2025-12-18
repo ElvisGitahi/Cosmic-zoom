@@ -1,1 +1,195 @@
-open in browser, make sure the browser has three.js working
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Exponential Cosmic Navigator</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        #ui { position: absolute; top: 25px; left: 25px; color: white; z-index: 10; pointer-events: none; }
+        h1 { margin: 0; font-size: 20px; letter-spacing: 4px; font-weight: 200; text-transform: uppercase; }
+        #location { margin-top: 10px; font-size: 13px; color: #00d2ff; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; }
+        .btn-group { margin-top: 20px; pointer-events: auto; display: flex; flex-direction: column; gap: 8px; }
+        button {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 12px 18px;
+            font-size: 10px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: 0.3s;
+            border-radius: 4px;
+            width: 200px;
+            text-align: left;
+            backdrop-filter: blur(5px);
+        }
+        button:hover { background: rgba(0, 210, 255, 0.2); border-color: #00d2ff; }
+        #nav-hint { position: absolute; bottom: 20px; width: 100%; text-align: center; color: rgba(255,255,255,0.3); font-size: 9px; letter-spacing: 2px; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>COSMIC NAVIGATOR</h1>
+        <div id="location">Local Group</div>
+        <div class="btn-group">
+            <button onclick="focusOn('milkyWay')">Focus: Milky Way</button>
+            <button onclick="focusOn('andromeda')">Focus: Andromeda</button>
+            <button onclick="focusOn('earth')">Focus: Planet Earth</button>
+        </div>
+    </div>
+
+    <div id="nav-hint">Adaptive Zoom: Speed increases with distance</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
+    <script>
+        // --- 1. Texture Fix (Soft Stars) ---
+        function createStarTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.3)');
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 64, 64);
+            return new THREE.CanvasTexture(canvas);
+        }
+        const starTexture = createStarTexture();
+
+        // --- 2. Setup Scene & Logarithmic Camera ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 10000000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.screenSpacePanning = true;
+        camera.position.set(2000, 1500, 3000);
+
+        // --- 3. Scale & Coordinates ---
+        const POS = {
+            milkyWay: new THREE.Vector3(0, 0, 0),
+            andromeda: new THREE.Vector3(8000, 500, -5000), // Realistically distant
+            earth: new THREE.Vector3(180, 5, 100)
+        };
+
+        // --- 4. Galaxy & Universe Generation ---
+        function createGalaxy(radius, stars, color, spin, center) {
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(stars * 3);
+            for(let i=0; i<stars; i++) {
+                const r = Math.random() * radius;
+                const angle = r * spin + (i % 4) * (Math.PI / 2);
+                pos[i*3] = Math.cos(angle) * r + (Math.random()-0.5)*r*0.1 + center.x;
+                pos[i*3+1] = (Math.random()-0.5) * (radius * 0.05) + center.y;
+                pos[i*3+2] = Math.sin(angle) * r + (Math.random()-0.5)*r*0.1 + center.z;
+            }
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            return new THREE.Points(geo, new THREE.PointsMaterial({
+                color: color, size: 2.5, map: starTexture, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+            }));
+        }
+
+        const mw = createGalaxy(400, 50000, 0x66ccff, 0.8, POS.milkyWay);
+        const and = createGalaxy(600, 40000, 0xffccaa, 0.4, POS.andromeda);
+        and.rotation.x = 0.5;
+        scene.add(mw, and);
+
+        // Infinite Background Stars
+        const bgGeo = new THREE.BufferGeometry();
+        const bgPos = new Float32Array(20000 * 3);
+        for(let i=0; i<60000; i++) bgPos[i] = (Math.random()-0.5) * 80000;
+        bgGeo.setAttribute('position', new THREE.BufferAttribute(bgPos, 3));
+        scene.add(new THREE.Points(bgGeo, new THREE.PointsMaterial({ size: 20, map: starTexture, transparent: true, opacity: 0.4, depthWrite: false })));
+
+        // --- 5. Solar System ---
+        const solarGroup = new THREE.Group();
+        solarGroup.position.copy(POS.earth);
+        scene.add(solarGroup);
+
+        const sun = new THREE.Mesh(new THREE.SphereGeometry(1.5, 64, 64), new THREE.MeshBasicMaterial({ color: 0xffdd44 }));
+        solarGroup.add(sun);
+        const sunLight = new THREE.PointLight(0xffffff, 2, 2000);
+        solarGroup.add(sunLight);
+
+        const earthGroup = new THREE.Group();
+        earthGroup.position.x = 25;
+        solarGroup.add(earthGroup);
+
+        const earth = new THREE.Mesh(new THREE.SphereGeometry(0.5, 64, 64), new THREE.MeshStandardMaterial({ color: 0x1166ff }));
+        const moon = new THREE.Mesh(new THREE.SphereGeometry(0.12, 32, 32), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+        moon.position.x = 2;
+        earthGroup.add(earth, moon);
+        scene.add(new THREE.AmbientLight(0x111111));
+
+        // --- 6. Intelligent Navigation ---
+        function focusOn(key) {
+            const target = POS[key];
+            const dist = key === 'earth' ? 20 : key === 'andromeda' ? 1200 : 1000;
+
+            new TWEEN.Tween(controls.target).to({ x: target.x, y: target.y, z: target.z }, 2500)
+                .easing(TWEEN.Easing.Quadratic.InOut).start();
+
+            new TWEEN.Tween(camera.position).to({ x: target.x + dist, y: target.y + dist/2, z: target.z + dist }, 2500)
+                .easing(TWEEN.Easing.Quadratic.InOut).start();
+        }
+
+        // --- 7. Animation Loop with Adaptive Zoom Speed ---
+        function animate() {
+            requestAnimationFrame(animate);
+            TWEEN.update();
+            controls.update();
+
+            // FIX: ADAPTIVE ZOOM SPEED
+            // We calculate distance to current focus point. 
+            // If we are at Andromeda (dist ~5000), zoom is fast.
+            // If we are at Earth (dist ~10), zoom is slow and precise.
+            const distanceToTarget = camera.position.distanceTo(controls.target);
+            controls.zoomSpeed = Math.max(0.2, Math.min(5.0, distanceToTarget / 800));
+
+            // Dynamic Scaling for Solar System visibility
+            const distToEarth = camera.position.distanceTo(POS.earth);
+            if (distToEarth < 300) {
+                let s = THREE.MathUtils.mapLinear(distToEarth, 300, 0, 1, 30);
+                solarGroup.scale.setScalar(s);
+            } else {
+                solarGroup.scale.setScalar(1);
+            }
+
+            // Update UI
+            const locUI = document.getElementById('location');
+            if (camera.position.distanceTo(POS.andromeda) < 2000) locUI.innerText = "Target: Andromeda Galaxy";
+            else if (distToEarth < 100) locUI.innerText = "Target: Earth (Orion Arm)";
+            else if (distToEarth < 1000) locUI.innerText = "Target: Milky Way";
+            else locUI.innerText = "Target: Local Group";
+
+            // Rotations
+            mw.rotation.y += 0.0001;
+            and.rotation.y -= 0.00005;
+            earthGroup.rotation.y += 0.005;
+            moon.position.x = Math.cos(Date.now() * 0.001) * 2;
+            moon.position.z = Math.sin(Date.now() * 0.001) * 2;
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
